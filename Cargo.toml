@@ -1,0 +1,9 @@
+[package]
+name = "sbfnj"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+eyre = "0.6"
+inkwell = { version = "0.6.0", default-features = false, features = ["llvm18-1"] }
