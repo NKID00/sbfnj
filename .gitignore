@@ -1,4 +1,5 @@
 /target
+*.out
 *.ll
 *.b
 /prog

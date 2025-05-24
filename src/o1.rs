@@ -1,9 +1,12 @@
 use std::{
+    fmt::{Binary, Display, Formatter},
     fs::File,
-    io::{BufReader, Read, stdin},
+    io::{BufReader, Read, Write, stdin, stdout},
 };
 
 use eyre::{Result, eyre};
+
+use crate::Args;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Inst {
@@ -13,6 +16,50 @@ pub enum Inst {
     LoopEnd(usize),
     Output,
     Input,
+}
+
+impl Display for Inst {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        use Inst::*;
+
+        match self {
+            PtrInc(n) => write!(f, "add ptr, {n}"),
+            ValInc(n) => write!(f, "add val, {n}"),
+            LoopStart(target) => write!(f, "jz {target}"),
+            LoopEnd(target) => write!(f, "jnz {target}"),
+            Output => write!(f, "out"),
+            Input => write!(f, "in"),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct Prog(Vec<Inst>);
+
+impl Display for Prog {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        use Inst::*;
+
+        let lines = self.0.len();
+        let line_number_width = lines.to_string().len().max(2);
+        let mut tabs = 0;
+        for (line, inst) in self.0.iter().enumerate() {
+            if let LoopEnd(_) = inst {
+                tabs -= 1
+            }
+            writeln!(
+                f,
+                "{0:>1$}  {2}{inst}",
+                line,
+                line_number_width,
+                " ".repeat(tabs * 2)
+            )?;
+            if let LoopStart(_) = inst {
+                tabs += 1
+            }
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug)]
@@ -105,18 +152,23 @@ pub fn compile(f: File) -> Result<Vec<Inst>> {
     Ok(prog)
 }
 
-pub fn main(f: File) -> Result<()> {
+pub fn main(args: Args, f: File) -> Result<()> {
     use Inst::*;
 
-    let instructions = compile(f)?;
+    let prog = compile(f)?;
+    if args.text {
+        print!("{}", Prog(prog.clone()));
+        return Ok(());
+    }
 
     let mut pc = 0;
     let mut memory = vec![0u8; 30000];
     let mut ptr = 0usize;
+    let mut output = stdout().lock();
     let lock = stdin().lock();
     let mut input = lock.bytes().fuse();
-    while pc < instructions.len() {
-        match instructions[pc] {
+    while pc < prog.len() {
+        match prog[pc] {
             PtrInc(n) => {
                 ptr = ptr.wrapping_add_signed(n as isize);
                 pc += 1;
@@ -128,7 +180,7 @@ pub fn main(f: File) -> Result<()> {
             LoopStart(target) if memory[ptr] == 0 => pc = target,
             LoopEnd(target) if memory[ptr] != 0 => pc = target,
             Output => {
-                print!("{}", memory[ptr] as char);
+                output.write_all(&[memory[ptr]])?;
                 pc += 1;
             }
             Input => {

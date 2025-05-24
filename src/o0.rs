@@ -1,11 +1,17 @@
 use std::{
     fs::File,
-    io::{Read, stdin},
+    io::{Read, Write, stdin, stdout},
 };
 
-use eyre::Result;
+use eyre::{Result, eyre};
 
-pub fn main(mut f: File) -> Result<()> {
+use crate::Args;
+
+pub fn main(args: Args, mut f: File) -> Result<()> {
+    if args.text {
+        return Err(eyre!("o0 interpreter has no IR"));
+    }
+
     let mut instructions = Vec::new();
     f.read_to_end(&mut instructions)?;
     let instructions = instructions;
@@ -13,6 +19,7 @@ pub fn main(mut f: File) -> Result<()> {
     let mut nest_level;
     let mut memory = vec![0u8; 30000];
     let mut ptr = 0usize;
+    let mut output = stdout().lock();
     let lock = stdin().lock();
     let mut input = lock.bytes().fuse();
     while pc < instructions.len() {
@@ -62,7 +69,9 @@ pub fn main(mut f: File) -> Result<()> {
                     pc -= 1;
                 }
             }
-            b'.' => print!("{}", memory[ptr] as char),
+            b'.' => {
+                output.write_all(&[memory[ptr]])?;
+            }
             b',' => memory[ptr] = input.next().and_then(Result::ok).unwrap_or(0),
             _ => {}
         }

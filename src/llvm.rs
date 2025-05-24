@@ -1,4 +1,11 @@
-use std::{fs::File, process::Command};
+use std::{
+    ffi::{OsStr, OsString},
+    fs::File,
+    io::Write,
+    path::PathBuf,
+    process::Command,
+    str::FromStr,
+};
 
 use eyre::{OptionExt, Result, eyre};
 use inkwell::{
@@ -7,41 +14,14 @@ use inkwell::{
     builder::Builder,
     context::Context,
     module::{Linkage, Module},
+    targets::TargetTriple,
     values::{FunctionValue, PointerValue},
 };
 
-use crate::o1;
-
-#[derive(Debug, Clone)]
-pub enum Stmt {
-    PtrInc(i32),
-    ValInc(i32),
-    Loop(Vec<Stmt>),
-    Output,
-    Input,
-}
-
-pub fn parse(prog: Vec<o1::Inst>) -> Vec<Stmt> {
-    parse_rec(&mut prog.into_iter())
-}
-
-fn parse_rec(iter: &mut impl Iterator<Item = o1::Inst>) -> Vec<Stmt> {
-    let mut prog = Vec::new();
-    while let Some(inst) = iter.next() {
-        let stmt = match inst {
-            o1::Inst::PtrInc(n) => Stmt::PtrInc(n),
-            o1::Inst::ValInc(n) => Stmt::ValInc(n),
-            o1::Inst::LoopStart(_target) => Stmt::Loop(parse_rec(iter)),
-            o1::Inst::LoopEnd(_target) => {
-                return prog;
-            }
-            o1::Inst::Output => Stmt::Output,
-            o1::Inst::Input => Stmt::Input,
-        };
-        prog.push(stmt);
-    }
-    prog
-}
+use crate::{
+    Args, o1,
+    o2::{self, Stmt},
+};
 
 #[derive(Debug)]
 pub struct Compiler<'ctx> {
@@ -60,6 +40,8 @@ impl<'ctx> Compiler<'ctx> {
     fn new(context: &'ctx Context) -> Result<Self> {
         let builder = context.create_builder();
         let module = context.create_module("main");
+        #[cfg(target_arch = "x86_64")]
+        module.set_triple(&TargetTriple::create("x86_64-pc-linux-gnu"));
 
         let i32_type = context.i32_type();
         let main_type = i32_type.fn_type(&[], false);
@@ -83,7 +65,7 @@ impl<'ctx> Compiler<'ctx> {
         let getchar = module.add_function("getchar", getchar_type, Some(Linkage::External));
 
         Ok(Compiler {
-            context: context,
+            context,
             builder,
             module,
             main,
@@ -95,7 +77,7 @@ impl<'ctx> Compiler<'ctx> {
         })
     }
 
-    fn compile(&mut self, prog: Vec<Stmt>) -> Result<()> {
+    fn compile(&mut self, prog: Vec<Stmt>) -> Result<String> {
         let i32_type = self.context.i32_type();
         let i32_zero = i32_type.const_zero();
         self.builder.build_store(self.ptr, i32_zero)?;
@@ -115,10 +97,7 @@ impl<'ctx> Compiler<'ctx> {
 
         self.builder.build_return(Some(&i32_zero))?;
 
-        self.module
-            .print_to_file("prog.ll")
-            .map_err(|s| eyre!(s.to_string()))?;
-        Ok(())
+        Ok(self.module.print_to_string().to_string())
     }
 
     fn compile_rec(&mut self, prog: Vec<Stmt>) -> Result<()> {
@@ -223,13 +202,33 @@ impl<'ctx> Compiler<'ctx> {
     }
 }
 
-pub fn main(f: File) -> Result<()> {
+pub fn main(args: Args, f: File) -> Result<()> {
     let prog = o1::compile(f)?;
-    let prog = parse(prog);
-    Compiler::new(&Context::create())?.compile(prog)?;
+    let prog = o2::compile(prog);
+    let ir = Compiler::new(&Context::create())?.compile(prog)?;
+    if args.text {
+        print!("{ir}");
+        return Ok(());
+    }
+    let path = PathBuf::from_str(&args.input).unwrap();
+    let ir_path = path.with_added_extension("ll");
+    let exe_path = path.with_added_extension("out");
+    let exe_path = if exe_path.is_relative() {
+        let mut temp = PathBuf::from_str("./").unwrap();
+        temp.push(&exe_path);
+        temp
+    } else {
+        exe_path
+    };
+    File::create(&ir_path)?.write_all(ir.as_bytes())?;
     Command::new("clang")
-        .args(["-o", "prog", "-O2", "prog.ll"])
+        .args([
+            "-o".as_ref(),
+            exe_path.as_os_str(),
+            "-O2".as_ref(),
+            ir_path.as_os_str(),
+        ])
         .status()?;
-    Command::new("./prog").status()?;
+    Command::new(exe_path).status()?;
     Ok(())
 }
