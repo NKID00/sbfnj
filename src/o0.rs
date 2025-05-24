@@ -17,7 +17,7 @@ pub fn main(args: Args, mut f: File) -> Result<()> {
     let instructions = instructions;
     let mut pc = 0;
     let mut nest_level;
-    let mut memory = vec![0u8; 30000];
+    let mut mem = vec![0u8; 30000];
     let mut ptr = 0usize;
     let mut output = stdout().lock();
     let lock = stdin().lock();
@@ -31,12 +31,12 @@ pub fn main(args: Args, mut f: File) -> Result<()> {
                 ptr -= 1;
             }
             b'+' => {
-                memory[ptr] = memory[ptr].wrapping_add(1);
+                mem[ptr] = mem[ptr].wrapping_add(1);
             }
             b'-' => {
-                memory[ptr] = memory[ptr].wrapping_sub(1);
+                mem[ptr] = mem[ptr].wrapping_sub(1);
             }
-            b'[' if memory[ptr] == 0 => {
+            b'[' if mem[ptr] == 0 => {
                 pc += 1;
                 nest_level = 1;
                 while nest_level > 0 {
@@ -70,9 +70,9 @@ pub fn main(args: Args, mut f: File) -> Result<()> {
                 }
             }
             b'.' => {
-                output.write_all(&[memory[ptr]])?;
+                output.write_all(&[mem[ptr]])?;
             }
-            b',' => memory[ptr] = input.next().and_then(Result::ok).unwrap_or(0),
+            b',' => mem[ptr] = input.next().and_then(Result::ok).unwrap_or(0),
             _ => {}
         }
         pc += 1;

@@ -10,7 +10,7 @@ sbfnj --jit  prog.b  # Tiered JIT (TODO)
 sbfnj --llvm prog.b  # Emit LLVM IR, call clang and execute
 ```
 
-```sh
+```
 Standard BrainFuck of NanJing
 
 Usage: sbfnj [OPTIONS] <INPUT>
@@ -23,7 +23,7 @@ Options:
       --o0    Disable optimization (default)
       --o1    Enable optimizations
       --o2    More optimizations
-      --jit   JIT
+      --jit   JIT (TODO)
       --llvm  Emit LLVM IR and call clang
   -h, --help  Print help
 ```

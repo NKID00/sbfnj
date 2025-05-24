@@ -1,5 +1,5 @@
 use std::{
-    fmt::{Binary, Display, Formatter},
+    fmt::{Display, Formatter},
     fs::File,
     io::{BufReader, Read, Write, stdin, stdout},
 };
@@ -162,7 +162,7 @@ pub fn main(args: Args, f: File) -> Result<()> {
     }
 
     let mut pc = 0;
-    let mut memory = vec![0u8; 30000];
+    let mut mem = vec![0u8; 30000];
     let mut ptr = 0usize;
     let mut output = stdout().lock();
     let lock = stdin().lock();
@@ -174,17 +174,17 @@ pub fn main(args: Args, f: File) -> Result<()> {
                 pc += 1;
             }
             ValInc(n) => {
-                memory[ptr] = memory[ptr].wrapping_add_signed(n as i8);
+                mem[ptr] = mem[ptr].wrapping_add_signed(n as i8);
                 pc += 1;
             }
-            LoopStart(target) if memory[ptr] == 0 => pc = target,
-            LoopEnd(target) if memory[ptr] != 0 => pc = target,
+            LoopStart(target) if mem[ptr] == 0 => pc = target,
+            LoopEnd(target) if mem[ptr] != 0 => pc = target,
             Output => {
-                output.write_all(&[memory[ptr]])?;
+                output.write_all(&[mem[ptr]])?;
                 pc += 1;
             }
             Input => {
-                memory[ptr] = input.next().and_then(Result::ok).unwrap_or(0);
+                mem[ptr] = input.next().and_then(Result::ok).unwrap_or(0);
                 pc += 1;
             }
             _ => pc += 1,

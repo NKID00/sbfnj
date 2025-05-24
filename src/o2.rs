@@ -124,7 +124,7 @@ impl AddAssign for SymExVal {
 #[derive(Debug)]
 struct SymExInfo {
     ptr_delta: i32,
-    memory_delta: BTreeMap<i32, SymExVal>,
+    mem_delta: BTreeMap<i32, SymExVal>,
 }
 
 fn symbolic_execution(prog: &Vec<Stmt>) -> Result<SymExInfo> {
@@ -132,14 +132,14 @@ fn symbolic_execution(prog: &Vec<Stmt>) -> Result<SymExInfo> {
     use SymExVal::*;
 
     let mut ptr_delta = 0;
-    let mut memory_delta = BTreeMap::new();
+    let mut mem_delta = BTreeMap::new();
     for stmt in prog {
         match stmt {
             PtrInc(n) => ptr_delta += n,
-            ValInc(n) => match memory_delta.get_mut(&ptr_delta) {
+            ValInc(n) => match mem_delta.get_mut(&ptr_delta) {
                 Some(delta) => *delta += Const(*n),
                 None => {
-                    memory_delta.insert(ptr_delta, Const(*n));
+                    mem_delta.insert(ptr_delta, Const(*n));
                 }
             },
             Loop(_) => Err(eyre!("nested loop is not implemented"))?,
@@ -148,7 +148,7 @@ fn symbolic_execution(prog: &Vec<Stmt>) -> Result<SymExInfo> {
     }
     Ok(SymExInfo {
         ptr_delta,
-        memory_delta,
+        mem_delta,
     })
 }
 
@@ -167,11 +167,11 @@ fn optimize_loop(body: Vec<Stmt>) -> Vec<Stmt> {
     match symbolic_execution(&body) {
         Ok(SymExInfo {
             ptr_delta,
-            memory_delta,
+            mem_delta,
         }) => {
             if ptr_delta == 0 {
-                // memory[ptr] is loop index
-                let step = match memory_delta.get(&0) {
+                // mem[ptr] is loop index
+                let step = match mem_delta.get(&0) {
                     Some(Const(0)) => unimplemented!("diverge: dead loop"),
                     Some(Const(v)) => *v,
                     _ => return body,
@@ -194,7 +194,7 @@ struct Interpreter<'a, 'b> {
     output: StdoutLock<'a>,
     input: Fuse<Bytes<StdinLock<'a>>>,
     prog: &'b Vec<Stmt>,
-    memory: Vec<u8>,
+    mem: Vec<u8>,
     ptr: usize,
 }
 
@@ -204,7 +204,7 @@ impl<'a, 'b> Interpreter<'a, 'b> {
             output: stdout().lock(),
             input: stdin().lock().bytes().fuse(),
             prog,
-            memory: vec![0u8; 30000],
+            mem: vec![0u8; 30000],
             ptr: 0,
         }
     }
@@ -218,18 +218,18 @@ impl<'a, 'b> Interpreter<'a, 'b> {
             match stmt {
                 Stmt::PtrInc(n) => self.ptr = self.ptr.wrapping_add_signed(*n as isize),
                 Stmt::ValInc(n) => {
-                    self.memory[self.ptr] = self.memory[self.ptr].wrapping_add_signed(*n as i8)
+                    self.mem[self.ptr] = self.mem[self.ptr].wrapping_add_signed(*n as i8)
                 }
                 Stmt::Loop(body) => {
-                    while self.memory[self.ptr] != 0 {
+                    while self.mem[self.ptr] != 0 {
                         self.interpret_rec(body)?
                     }
                 }
                 Stmt::Output => {
-                    self.output.write_all(&[self.memory[self.ptr]])?;
+                    self.output.write_all(&[self.mem[self.ptr]])?;
                 }
                 Stmt::Input => {
-                    self.memory[self.ptr] = self.input.next().and_then(Result::ok).unwrap_or(0)
+                    self.mem[self.ptr] = self.input.next().and_then(Result::ok).unwrap_or(0)
                 }
                 _ => unimplemented!(),
             }
